@@ -1,26 +1,20 @@
-/*********
-  Rui Santos
-  Complete project details at https://RandomNerdTutorials.com/esp32-async-web-server-espasyncwebserver-library/
-  The above copyright notice and this permission notice shall be included in all
-  copies or substantial portions of the Software.
-*********/
-
-// Import required libraries
+// Importa bibliotecas necessarias
 #include <WiFi.h>
 #include <AsyncTCP.h>
 #include <ESPAsyncWebServer.h>
 
-// Replace with your network credentials
+// define as credenciais do ponto de acesso
 const char* ssid = "medidor de gravidade";
 const char* password = "gravitron";
 
 const char* PARAM_INPUT_1 = "output";
 const char* PARAM_INPUT_2 = "state";
 
-// Create AsyncWebServer object on port 80
+// Cria um servidor weeb asincrono na porta 80
 AsyncWebServer server(80);
 
 #pragma region html
+// define o codigo fonte da pagina web
 const char index_html[] PROGMEM = R"rawliteral(
 <!DOCTYPE html>
 <html>
@@ -186,57 +180,41 @@ const char index_html[] PROGMEM = R"rawliteral(
 </html>
 )rawliteral";
 
-// Replaces placeholder with button section in your web page
-String processor(const String& var){
-  //Serial.println(var);
-  if(var == "BUTTONPLACEHOLDER"){
-    String buttons = "";
-    buttons += "<h4>Output - GPIO 2</h4><label class=\"switch\"><input type=\"checkbox\" onchange=\"toggleCheckbox(this)\" id=\"2\" " + outputState(2) + "><span class=\"slider\"></span></label>";
-    buttons += "<h4>Output - GPIO 4</h4><label class=\"switch\"><input type=\"checkbox\" onchange=\"toggleCheckbox(this)\" id=\"4\" " + outputState(4) + "><span class=\"slider\"></span></label>";
-    buttons += "<h4>Output - GPIO 33</h4><label class=\"switch\"><input type=\"checkbox\" onchange=\"toggleCheckbox(this)\" id=\"33\" " + outputState(33) + "><span class=\"slider\"></span></label>";
-    return buttons;
-  }
-  return String();
-}
 
-String outputState(int output){
-  if(digitalRead(output)){
-    return "checked";
-  }
-  else {
-    return "";
-  }
-}
 #pragma endregion html
-int p = 2500;
-float h = 1541;
+//define variaveis globais
+int sensibilidade = 2500;
+float altura = 1541;
 int potPin = 32;
-bool go = false;
-bool cheat = false;
-int micro = 0;
+bool vai = false;
 String resp;
 void setup(){
-  // Serial port for debugging purposes
+  // Abre uma porta serial para depuraçao
   Serial.begin(115200);
+
+  //define o modo e estado dos pinos a serem ultilizados
   pinMode(2, OUTPUT);
   digitalWrite(2, LOW);
   pinMode(4,INPUT);
+
+  //abre rede wifi
   WiFi.softAP(ssid, password);
 
+  //obtem o ip local e imprime ele na prota serial
   IPAddress IP = WiFi.softAPIP();
   Serial.println(IP);
   
   server.begin();
-  // Route for root / web page
+  // Rota para a pagina raix do servidor
   server.on("/", HTTP_GET, [](AsyncWebServerRequest *request){
     request->send_P(200, "text/html", index_html, processor);
   });
 
-  // Send a GET request to <ESP_IP>/update?output=<inputMessage1>&state=<inputMessage2>
+  // url para a request de mudança de senssibilidade
   server.on("/sense", HTTP_GET, [] (AsyncWebServerRequest *request) {
     String inputMessage1;
     String inputMessage2;
-    // GET input1 value on <ESP_IP>/update?output=<inputMessage1>&state=<inputMessage2>
+
     if (request->hasParam(PARAM_INPUT_1)) {
       String stri = request->getParam(PARAM_INPUT_1)->value();
       char pe[stri.length()];
@@ -245,22 +223,21 @@ void setup(){
     for (i = 0; i < sizeof(p); i++) {
         pe[i] = stri[i];
     }
-      p = atoi(pe);
+      sensibilidade = atoi(pe);
       Serial.print("sense: ");
       Serial.println(p);
     }
     else {
       inputMessage1 = "No message sent";
-      inputMessage2 = "No message sent";
     }
 
     request->send(200, "text/plain", "OK");
   });
+  //url para definir a altura
 server.on("/tall", HTTP_GET, [] (AsyncWebServerRequest *request) {
     String inputMessage1;
     String inputMessage2;
 
-    // GET input1 value on <ESP_IP>/update?output=<inputMessage1>&state=<inputMessage2>
     if (request->hasParam(PARAM_INPUT_1)) {
       String stri = request->getParam(PARAM_INPUT_1)->value();
       char pe[stri.length()];
@@ -269,7 +246,7 @@ server.on("/tall", HTTP_GET, [] (AsyncWebServerRequest *request) {
     for (i = 0; i < sizeof(p); i++) {
         pe[i] = stri[i];
     }
-    h = (float) atoi(pe);
+    altura = (float) atoi(pe);
       Serial.print("tall: ");
       Serial.println(h);
     }
@@ -280,72 +257,60 @@ server.on("/tall", HTTP_GET, [] (AsyncWebServerRequest *request) {
 
     request->send(200, "text/plain", "OK");
   });
+//request para iniciar a medição da gravidade
   server.on("/grav", HTTP_GET, [] (AsyncWebServerRequest *request) {
     Serial.println("grav");
     go = true;
     request->send(200, "text/plain", "OK");
   });
+  //request para obter o resultado da medição
   server.on("/func", HTTP_GET, [] (AsyncWebServerRequest *request) {
-    //Serial.println(resp);
     request->send(200, "text/plain", resp);
   });
-  server.on("/cheat", HTTP_GET, [] (AsyncWebServerRequest *request) {
-    cheat = !cheat;
-    request->send(200, "text/plain", "cheat: "+cheat);
-  });
   Serial.println(potPin);
-  // Start server
+  // Inicia o servidor http
   server.begin();
 }
 
 void loop() {
-  if (go){
+  //checa se ja pode realizar a medição
+  if (vai){
     resp = gravidade();
-    go= false;
+    vai= false;
 
   }
 }
 
+//função asinclrona que faz a medição
 String gravidade(){
   Serial.println("começando");
-  digitalWrite(2,HIGH);
-  delay(5000);
-  digitalWrite(2,LOW);
+  digitalWrite(2,HIGH); // liga o eletroimã
+  delay(5000); // espera 5000 milisegundo (5 segundos)
+  digitalWrite(2,LOW); // desliga o eletroimã
+  //define as variaveis livais
   bool queda = false;
   int high;
   float time;
   Serial.println("caindo");
   while(!queda){
-    int mic = analogRead(potPin);
-    if(mic >= p){
-      high = mic;
-      queda = true;
-      time--;
-      Serial.println("POW");
+    int mic = analogRead(potPin); // le input do microfone
+
+    //checa se o input do microfone é maior doque a nivel de senssibilidade
+    if(mic >= sensibilidade){
+      high = mic; //salva o input do microfone
+      queda = true; //quebra o loop
+      time--; // ajusta o tempo
     }
-    delay(1);
-    time += 1;    
+    delay(1); //espera um milisegundo
+    time += 1; // aumenta o tempo caso não haja detecção
   }
   Serial.println("calculando...");
-  if (!cheat){
-    float acl = ((((h/1000)*2/(time/1000))/(time/1000))/100)*106;
-  String aa = "a = ";
-  String ac =" + ";
-  String ae = " + a x ";
-  String ag = "²/2";
-  String fhr = aa+h+ac+time+ae+high+ag;
-  String spd = "m/s²|";
-  String ret = acl+spd+fhr;
-  Serial.println(ret);
-  return ret;
-  }
-  else{
-    int desvio = random(100,999);
-  Serial.println(desvio, 7);
-  String ret = "9.8";
-  String sqr = "m/s²";
-  String set = ret+desvio+sqr;
-  Serial.println(set);
-  return set;
-  }
+
+    float acl = ((((h/1000)*2/(time/1000))/(time/1000))/100); //faz o calculo
+
+    //formata o valor
+    String vlc = " m/s²";
+    String ret = acl+vlc;
+  return ret; //retorna o valor
+
 }
