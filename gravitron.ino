@@ -306,7 +306,7 @@ String gravidade(){
   }
   Serial.println("calculando...");
 
-    float acl = ((((h/1000)*2/(time/1000))/(time/1000))/100); //faz o calculo
+    float acl = ((((h/1000)*2/powr(time/1000,2))/(time/1000))/100); //faz o calculo
 
     //formata o valor
     String vlc = " m/s²";
